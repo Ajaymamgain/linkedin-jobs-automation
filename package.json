@@ -1,0 +1,29 @@
+{
+  "name": "linkedin-jobs-automation",
+  "version": "1.0.0",
+  "description": "LinkedIn job scraper using AWS Lambda, Serverless Framework, and DynamoDB",
+  "scripts": {
+    "build": "tsc",
+    "deploy": "serverless deploy",
+    "deploy:prod": "serverless deploy --stage prod",
+    "create-layer": "bash scripts/create-lambda-layer.sh",
+    "start:dynamodb": "serverless dynamodb start",
+    "start:offline": "serverless offline start"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.1550.0",
+    "chrome-aws-lambda": "^10.1.0",
+    "puppeteer-core": "^10.1.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.133",
+    "@types/node": "^18.0.0",
+    "@types/uuid": "^9.0.8",
+    "serverless": "^3.38.0",
+    "serverless-dotenv-plugin": "^6.0.0",
+    "serverless-dynamodb-local": "^0.2.40",
+    "serverless-offline": "^13.3.3",
+    "typescript": "^5.3.0"
+  }
+}
