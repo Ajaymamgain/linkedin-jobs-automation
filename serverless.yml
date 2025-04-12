@@ -1,0 +1,143 @@
+service: linkedin-jobs-scraper
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ${opt:region, 'us-east-1'}
+  memorySize: 2048
+  timeout: 900
+  environment:
+    JOBS_TABLE: ${self:service}-jobs-${sls:stage}
+    SCRAPING_LOGS_TABLE: ${self:service}-logs-${sls:stage}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+            - dynamodb:BatchWriteItem
+          Resource:
+            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/${self:provider.environment.JOBS_TABLE}"
+            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/${self:provider.environment.SCRAPING_LOGS_TABLE}"
+
+custom:
+  scheduleEnabled: true
+  tableThroughputs:
+    prod: 5
+    default: 1
+  dynamodb:
+    stages:
+      - dev
+      - prod
+    start:
+      port: 8000
+      inMemory: true
+      migrate: true
+
+functions:
+  scraper:
+    handler: src/lambda/handler.handler
+    events:
+      - schedule:
+          rate: rate(1 hour)
+          enabled: ${self:custom.scheduleEnabled}
+          input:
+            source: schedule
+    layers:
+      - {Ref: PuppeteerLambdaLayer}
+
+  getJobs:
+    handler: src/lambda/api.getJobs
+    events:
+      - http:
+          path: jobs
+          method: get
+          cors: true
+
+  searchJobs:
+    handler: src/lambda/api.searchJobs
+    events:
+      - http:
+          path: jobs/search
+          method: post
+          cors: true
+
+layers:
+  puppeteer:
+    name: puppeteer-lambda-layer
+    description: Chrome and Puppeteer dependencies
+    package:
+      artifact: layers/puppeteer-layer.zip
+
+resources:
+  Resources:
+    JobsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.JOBS_TABLE}
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: company
+            AttributeType: S
+          - AttributeName: postedDate
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: CompanyIndex
+            KeySchema:
+              - AttributeName: company
+                KeyType: HASH
+              - AttributeName: postedDate
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+            ProvisionedThroughput:
+              ReadCapacityUnits: ${self:custom.tableThroughputs.${sls:stage}, self:custom.tableThroughputs.default}
+              WriteCapacityUnits: ${self:custom.tableThroughputs.${sls:stage}, self:custom.tableThroughputs.default}
+        ProvisionedThroughput:
+          ReadCapacityUnits: ${self:custom.tableThroughputs.${sls:stage}, self:custom.tableThroughputs.default}
+          WriteCapacityUnits: ${self:custom.tableThroughputs.${sls:stage}, self:custom.tableThroughputs.default}
+        TimeToLiveSpecification:
+          AttributeName: ttl
+          Enabled: true
+
+    ScrapingLogsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.SCRAPING_LOGS_TABLE}
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: startTime
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: StartTimeIndex
+            KeySchema:
+              - AttributeName: startTime
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+            ProvisionedThroughput:
+              ReadCapacityUnits: ${self:custom.tableThroughputs.${sls:stage}, self:custom.tableThroughputs.default}
+              WriteCapacityUnits: ${self:custom.tableThroughputs.${sls:stage}, self:custom.tableThroughputs.default}
+        ProvisionedThroughput:
+          ReadCapacityUnits: ${self:custom.tableThroughputs.${sls:stage}, self:custom.tableThroughputs.default}
+          WriteCapacityUnits: ${self:custom.tableThroughputs.${sls:stage}, self:custom.tableThroughputs.default}
+
+plugins:
+  - serverless-dynamodb-local
+  - serverless-offline
+  - serverless-dotenv-plugin
